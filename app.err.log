@@ -1,0 +1,130 @@
+Traceback (most recent call last):
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\queueing.py", line 848, in process_events
+    response = await route_utils.call_process_api(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\route_utils.py", line 417, in call_process_api
+    output = await app.get_blocks().process_api(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\blocks.py", line 2698, in process_api
+    result = await self.call_function(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\blocks.py", line 1963, in call_function
+    prediction = await anyio.to_thread.run_sync(  # type: ignore
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        fn, *processed_input, limiter=self.limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\utils.py", line 1116, in wrapper
+    response = f(*args, **kwargs)
+  File "C:\Users\Galaxy\Desktop\trans\video_transcription_gradio.ipynb", line 455, in run_next_batch
+    "def transcribe_audio(audio_path, engine, local_model, cloud_model, api_key, progress=gr.Progress()):\n",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gradio.exceptions.Error: 'All 3 files are already transcribed. Upload new files or click Reset.'
+Traceback (most recent call last):
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\queueing.py", line 848, in process_events
+    response = await route_utils.call_process_api(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\route_utils.py", line 417, in call_process_api
+    output = await app.get_blocks().process_api(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\blocks.py", line 2698, in process_api
+    result = await self.call_function(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\blocks.py", line 1963, in call_function
+    prediction = await anyio.to_thread.run_sync(  # type: ignore
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        fn, *processed_input, limiter=self.limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\gradio\utils.py", line 1116, in wrapper
+    response = f(*args, **kwargs)
+  File "C:\Users\Galaxy\Desktop\trans\video_transcription_gradio.ipynb", line 459, in run_next_batch
+      "    return transcript, note, csv_path, docx_path\n"
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    {
+    ^
+  File "C:\Users\Galaxy\Desktop\trans\video_transcription_gradio.ipynb", line 343, in transcribe_batch
+    "        document.add_heading(file_name, level=2)\n",
+    
+    "        for segment in segments:\n",
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    "            stamp = f\"[{format_timestamp(segment['start'])} - {format_timestamp(segment['end'])}]\"\n",
+    ^^^^^^^^^
+  File "C:\Users\Galaxy\Desktop\trans\video_transcription_gradio.ipynb", line 319, in transcribe_one
+    "\n",
+    
+  File "C:\Users\Galaxy\Desktop\trans\video_transcription_gradio.ipynb", line 240, in write_exports
+    "    set_groq_key_override(api_key)\n",
+               ^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\api.py", line 27, in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+                                         ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\package.py", line 126, in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\pkgreader.py", line 25, in from_file
+    sparts = PackageReader._load_serialized_parts(phys_reader, pkg_srels, content_types)
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\pkgreader.py", line 51, in _load_serialized_parts
+    for partname, blob, reltype, srels in part_walker:
+                                          ^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\pkgreader.py", line 82, in _walk_phys_parts
+    for partname, blob, reltype, srels in next_walker:
+                                          ^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\pkgreader.py", line 79, in _walk_phys_parts
+    blob = phys_reader.blob_for(partname)
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\site-packages\docx\opc\phys_pkg.py", line 83, in blob_for
+    return self._zipf.read(pack_uri.membername)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\zipfile\__init__.py", line 1622, in read
+    return fp.read()
+           ~~~~~~~^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\zipfile\__init__.py", line 1022, in read
+    buf += self._read1(self.MAX_N)
+           ~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Galaxy\AppData\Local\Programs\Python\Python313\Lib\zipfile\__init__.py", line 1112, in _read1
+    data = self._decompressor.decompress(data, n)
+MemoryError: Unable to allocate output buffer.
