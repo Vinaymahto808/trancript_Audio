@@ -7,8 +7,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,6 +19,7 @@ import httpx
 import numpy as np
 from docx import Document
 from faster_whisper import BatchedInferencePipeline, WhisperModel
+from gradio.context import LocalContext
 
 # ZeroGPU Spaces require at least one @spaces.GPU function, so the local engine
 # runs on the GPU there. Everywhere else (notebook, CPU Space, GPU failure) the
@@ -43,6 +46,14 @@ from cloud_providers import (
 LOCAL_MODELS = ["small", "base", "tiny", "medium", "large-v3-turbo", "large-v3"]
 CLOUD_MODELS = ["whisper-large-v3-turbo", "whisper-large-v3"]
 ENGINES = ["Local (faster-whisper, offline)", "Cloud (Groq + auto-fallback, fastest)"]
+# The cloud engine is ~15x faster than the CPU model (2 min of audio in ~3 s instead of
+# ~70 s), so it is the default whenever a provider key is configured. Without a key the
+# app still starts in the offline Local mode.
+DEFAULT_ENGINE = ENGINES[1] if any(provider.has_key() for provider in PROVIDERS) else ENGINES[0]
+# Parallelism for the cloud engine: files in a batch run together, and a shared slot
+# counter keeps the total number of provider requests bounded either way.
+CLOUD_FILE_WORKERS = 3
+CLOUD_SLOTS = threading.BoundedSemaphore(CLOUD_FILE_WORKERS)
 # Dropdown label -> Whisper language code (None = auto-detect). A hint matters for
 # short or noisy clips such as call recordings: without it Whisper may detect
 # English and translate Hindi speech into garbled English.
@@ -219,6 +230,53 @@ def chunk_duration(path):
         return float(CHUNK_SECONDS)
 
 
+# ---------------------------------------------------------------------------
+# Parallel helpers for the cloud engine.
+#
+# Gradio keeps the request context (what gr.Progress needs to report progress) in
+# contextvars, and plain worker threads do not inherit them. Every parallel helper
+# takes a snapshot of the caller's context and reinstalls it inside the worker, so
+# the progress bar keeps moving while files or chunks are transcribed together.
+# ---------------------------------------------------------------------------
+
+_GRADIO_CONTEXT_VARS = (
+    LocalContext.blocks,
+    LocalContext.blocks_config,
+    LocalContext.in_event_listener,
+    LocalContext.event_id,
+    LocalContext.request,
+    LocalContext.progress,
+)
+
+
+def _capture_gradio_context():
+    return tuple(var.get(None) for var in _GRADIO_CONTEXT_VARS)
+
+
+def _call_in_context(context, fn, *args, **kwargs):
+    for var, value in zip(_GRADIO_CONTEXT_VARS, context):
+        var.set(value)
+    return fn(*args, **kwargs)
+
+
+class _MonotonicProgress:
+    """Progress callback for parallel workers: never lets the bar jump backwards."""
+
+    def __init__(self, progress):
+        self._progress = progress
+        self._lock = threading.Lock()
+        self._last = 0.0
+
+    def __call__(self, fraction, desc=""):
+        with self._lock:
+            value = max(float(fraction), self._last)
+            self._last = value
+        try:
+            self._progress(value, desc=desc)
+        except Exception:  # noqa: BLE001 - a progress hiccup must not stop a batch
+            pass
+
+
 def transcribe_cloud(audio_path, model_name, api_key, work_dir, progress, language=None):
     """Send 10-minute chunks to the cloud; switch provider automatically on rate limits.
 
@@ -242,28 +300,63 @@ def transcribe_cloud(audio_path, model_name, api_key, work_dir, progress, langua
     if not chunks:
         raise gr.Error("FFmpeg produced no audio from this file.")
 
+    # Durations are probed up front (cheap) so every chunk knows its offset, then the
+    # chunks are fetched in parallel: a long recording becomes several requests that
+    # overlap instead of one slow queue. CLOUD_SLOTS caps the total provider requests.
+    durations = [chunk_duration(chunk) for chunk in chunks]
+    starts = []
+    offset = 0.0
+    for duration in durations:
+        starts.append(offset)
+        offset += duration
+
+    context = _capture_gradio_context()
+    results = {}
+    try:
+        with new_client() as client:
+
+            def fetch(index):
+                with CLOUD_SLOTS:
+                    provider_name, chunk_segments = transcribe_chunk_with_fallback(
+                        client, chunks[index], durations[index], language
+                    )
+                return index, provider_name, chunk_segments
+
+            if len(chunks) > 1:
+                with ThreadPoolExecutor(max_workers=min(CLOUD_FILE_WORKERS, len(chunks))) as pool:
+                    futures = {
+                        pool.submit(_call_in_context, context, fetch, index): index
+                        for index in range(len(chunks))
+                    }
+                    for future in as_completed(futures):
+                        index, provider_name, chunk_segments = future.result()
+                        results[index] = (provider_name, chunk_segments)
+                        progress(
+                            0.05 + 0.9 * len(results) / len(chunks),
+                            desc=f"Cloud chunk {len(results)}/{len(chunks)}",
+                        )
+            else:
+                _index, provider_name, chunk_segments = fetch(0)
+                results[0] = (provider_name, chunk_segments)
+                progress(0.95, desc="Cloud chunk 1/1")
+    except RuntimeError as error:
+        raise gr.Error(str(error)) from error
+    finally:
+        for chunk in chunks:
+            chunk.unlink(missing_ok=True)
+
     segments = []
     used = []
-    offset = 0.0
-    with new_client() as client:
-        for index, chunk in enumerate(chunks):
-            duration = chunk_duration(chunk)
-            progress(0.05 + 0.9 * index / len(chunks), desc=f"Cloud chunk {index + 1}/{len(chunks)}")
-            try:
-                provider_name, chunk_segments = transcribe_chunk_with_fallback(client, chunk, duration, language)
-            except RuntimeError as error:
-                raise gr.Error(str(error)) from error
-            finally:
-                chunk.unlink(missing_ok=True)
-            if provider_name not in used:
-                used.append(provider_name)
-            for segment in chunk_segments:
-                segments.append({
-                    "start": offset + float(segment["start"]),
-                    "end": offset + float(segment["end"]),
-                    "text": segment.get("text", ""),
-                })
-            offset += duration
+    for index in range(len(chunks)):
+        provider_name, chunk_segments = results[index]
+        if provider_name not in used:
+            used.append(provider_name)
+        for segment in chunk_segments:
+            segments.append({
+                "start": starts[index] + float(segment["start"]),
+                "end": starts[index] + float(segment["end"]),
+                "text": segment.get("text", ""),
+            })
     return segments, used
 
 
@@ -380,8 +473,12 @@ def transcribe_batch(paths, engine, local_model, cloud_model, api_key, language,
     ``total`` only shape the progress label, e.g. "[105/350] name".
     """
     total = total or (offset + len(paths))
-    records = []
-    for index, path in enumerate(paths):
+
+    # Parallel workers all report progress into the same bar, so keep it monotonic.
+    if engine.startswith("Cloud"):
+        progress = _MonotonicProgress(progress)
+
+    def transcribe_index(index, path):
         name = Path(path).name
         position = offset + index + 1
 
@@ -393,12 +490,23 @@ def transcribe_batch(paths, engine, local_model, cloud_model, api_key, language,
                 path, engine, local_model, cloud_model, api_key, file_progress, language
             )
         except gr.Error as error:
-            records.append({"name": name, "ok": False, "transcript": "", "note": f"FAILED, {error}",
-                            "csv": None, "docx": None, "segments": []})
-            continue
-        records.append({"name": display_name, "ok": bool(transcript), "transcript": transcript, "note": note,
-                        "csv": csv_path, "docx": docx_path, "segments": segments})
-    return records
+            return {"name": name, "ok": False, "transcript": "", "note": f"FAILED, {error}",
+                    "csv": None, "docx": None, "segments": []}
+        return {"name": display_name, "ok": bool(transcript), "transcript": transcript, "note": note,
+                "csv": csv_path, "docx": docx_path, "segments": segments}
+
+    # The cloud engine mostly waits on the API, so files overlap for free; the local
+    # engine already keeps the CPU busy with one file and stays serial.
+    if engine.startswith("Cloud") and len(paths) > 1:
+        context = _capture_gradio_context()
+        with ThreadPoolExecutor(max_workers=min(CLOUD_FILE_WORKERS, len(paths))) as pool:
+            futures = [
+                pool.submit(_call_in_context, context, transcribe_index, index, path)
+                for index, path in enumerate(paths)
+            ]
+            return [future.result() for future in futures]
+
+    return [transcribe_index(index, path) for index, path in enumerate(paths)]
 
 
 def build_outputs(records, uploaded_total=None):
@@ -454,7 +562,7 @@ if missing_setup:
         f"Missing: {', '.join(missing_setup)}"
     )
 
-DEFAULT_BATCH_SIZE = 100
+DEFAULT_BATCH_SIZE = 1000
 
 
 def new_state(paths=None):
@@ -523,7 +631,7 @@ def run_next_batch(state, batch_size, engine, local_model, cloud_model, api_key,
 with gr.Blocks(title="Audio Transcriber") as demo:
     gr.Markdown(
         "# Audio Transcriber" + chr(10) +
-        "Upload all your audio files at once. They are transcribed in batches (default 100 files per batch): "
+        "Upload up to 1,000 audio/video files at once. They are transcribed in batches (default 1,000 files per batch): "
         "click the button for the first batch, then again for the next one. Results and downloads accumulate. "
         "**Cloud** is fastest (Groq with automatic fallback to other keys in .env); **Local** works offline."
     )
@@ -545,12 +653,18 @@ with gr.Blocks(title="Audio Transcriber") as demo:
                 label="Language",
                 info="Pick Hindi for call recordings: short or noisy clips are often mis-detected as English.",
             )
-            engine_input = gr.Radio(choices=ENGINES, value=ENGINES[0], label="Engine")
+            engine_input = gr.Radio(
+                choices=ENGINES,
+                value=DEFAULT_ENGINE,
+                label="Engine",
+                info="Cloud (Groq) is ~15x faster than the local CPU model; Local works offline.",
+            )
             local_model_input = gr.Dropdown(
                 choices=LOCAL_MODELS,
                 value="small",
                 label="Local model",
-                info="small is the best already-downloaded model; medium and larger must download first.",
+                info="small balances quality and speed; base is ~3.5x faster (about 8x real-time "
+                     "on this PC) but less accurate. medium and large must download first.",
             )
             cloud_model_input = gr.Dropdown(
                 choices=CLOUD_MODELS,

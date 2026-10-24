@@ -11,8 +11,10 @@ short_description: Batch audio/video transcription to CSV and DOCX
 
 # Audio Transcriber
 
-Upload many audio/video files at once and transcribe them in batches, then download every
-transcript as one CSV, one DOCX, or one file per recording.
+Upload up to 1,000 audio/video files at once. The app processes 1,000 files per batch by
+default; change **Files per batch** to use smaller batches. Download every transcript as
+one CSV, one DOCX, or one file per recording. Large batches can take a long time and need
+sufficient disk space for uploads and generated transcripts.
 
 Two engines:
 
