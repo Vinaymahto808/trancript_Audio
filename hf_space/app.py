@@ -741,3 +741,21 @@ with gr.Blocks(title="Audio Transcriber") as demo:
     )
 
 demo.launch(server_name="0.0.0.0", server_port=7860, show_error=True)
+
+# Vercel/FastAPI ASGI entrypoint
+try:
+    from fastapi import FastAPI
+    import gradio as gr
+
+    _fastapi_app = FastAPI()
+    app = gr.mount_gradio_app(_fastapi_app, demo, path="/")
+    application = app
+    handler = app
+except Exception:
+    # If dependencies aren't available, fall back to Gradio's built-in app
+    try:
+        app = demo.app
+        application = app
+        handler = app
+    except Exception:
+        pass
