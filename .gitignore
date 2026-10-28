@@ -1,0 +1,12 @@
+# Call recordings and archives stay out of the repo
+recordings_*/
+recordings_*.zip
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets / local data
+.env
